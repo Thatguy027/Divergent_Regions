@@ -17,24 +17,13 @@ smooth_outs <- outliers %>%
                                               window = 10,
                                               tails = T))
 
-smooth_outs <- outliers %>%
-  dplyr::left_join(., coverage,  by = c("CHROM", "START_BIN", "END_BIN")) %>%
-  dplyr::mutate(direction = ifelse(is.na(direction), "ignore_na", 
-                                   ifelse(direction == "Down", "ignore_down", "Up"))) %>%
-  dplyr::mutate(zero_counts = ifelse((outlier == "Yes" & COUNT > 15) | COUNT > 15, COUNT, 0)) %>%
-  dplyr::filter(CHROM == "II") %>%
-  dplyr::mutate(smoothed_outs = smth.gaussian(zero_counts, 
-                                              alpha = 5,
-                                              window = 10,
-                                              tails = T))
-
 smooth_outs_pr <- smooth_outs %>%
   dplyr::group_by(GENOMIC_REGION) %>%
   dplyr::mutate(start_region = min(START_BIN),
                 end_region = max(END_BIN),
                 med_count = mean(COUNT),
                 iqr_count = sd(COUNT)) %>%
-  dplyr::mutate(iqr_out = ifelse(COUNT > med_count+(7*iqr_count), "7iqr",
+  dplyr::mutate(count_out = ifelse(COUNT > med_count+(7*iqr_count), "7iqr",
                                  ifelse(COUNT > med_count+(6*iqr_count), "6iqr",
                                         ifelse(COUNT > med_count+(5*iqr_count), "5iqr",
                                                ifelse(COUNT > med_count+(4*iqr_count), "4iqr",
@@ -44,8 +33,9 @@ smooth_outs_pr <- smooth_outs %>%
   dplyr::select(-index, -med_count, -iqr_count) %>%
   dplyr::mutate(med_cov = median(COVERAGE),
                 iqr_cov = IQR(COVERAGE)) %>%
-  dplyr::mutate(iqr_cov_out = ifelse(COVERAGE < med_cov-(2*iqr_cov), "low", 
-                                     ifelse(COVERAGE > med_cov+(2*iqr_cov), "high", "not_outlier")))
+  dplyr::mutate(iqr_cov_out = ifelse(COVERAGE < med_cov-(iqr_cov), "low", 
+                                     ifelse(COVERAGE > med_cov+(iqr_cov), "high", "not_outlier"))) %>%
+  dplyr::mutate(region = paste0(CHROM, ":", START_BIN, "-", END_BIN))
 
 ggplot()+
   facet_grid(.~CHROM, space = "free", scales = "free")+
