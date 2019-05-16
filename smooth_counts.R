@@ -6,15 +6,19 @@ try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
 outliers <- readr::read_tsv("CB4856_Outlier_Counts.tsv")
 coverage <- readr::read_tsv("CB4856.regions.bed.gz", col_names = c("CHROM", "START_BIN", "END_BIN", "COVERAGE"))
 
+# sv file - DEL
+# awk '$5 == "DEL" {print}' CB4856_HQ_SnpEff.bed | cut -f -3 | bedtools coverage -a 1000windows.bed -b stdin > CB4856_DEL_nSVs.bed
+# awk '$5 == "INV" {print}' CB4856_HQ_SnpEff.bed | cut -f -3 | bedtools coverage -a 1000windows.bed -b stdin > CB4856_INV_nSVs.bed
 # sv file
-# grep -v BND CB4856_SnpEff.bed | cut -f -3 | bedtools coverage -counts -a 1000windows.bed -b stdin > CB4856_nSVs.bed
+# grep -v BND CB4856_HQ_SnpEff.bed | cut -f -3 | bedtools coverage -a 1000windows.bed -b stdin > CB4856_nSVs.bed
 
-svs <- readr::read_tsv("CB4856_nSVs.bed", col_names = c("CHROM", "START_BIN", "END_BIN", "SV_CT"))
+total_svs <- readr::read_tsv("CB4856_nSVs.bed", col_names = c("CHROM", "START_BIN", "END_BIN", "total_SV_CT","total_SV_bases","bin_size","fraction_SV_bases")) %>%
+  dplyr::select(-bin_size)
 
 smooth_outs <- outliers %>%
   dplyr::left_join(., coverage,  by = c("CHROM", "START_BIN", "END_BIN")) %>%
-  dplyr::left_join(., svs,  by = c("CHROM", "START_BIN", "END_BIN")) %>%
-  dplyr::filter(CHROM=="II")%>%
+  dplyr::left_join(., total_svs,  by = c("CHROM", "START_BIN", "END_BIN")) %>%
+  dplyr::filter(CHROM=="IV")%>%
   dplyr::mutate(direction = ifelse(is.na(direction), "ignore_na", 
                                    ifelse(direction == "Down", "ignore_down", "Up"))) %>%
   dplyr::mutate(zero_counts = ifelse(outlier == "Yes", COUNT, 0)) %>%
@@ -30,12 +34,12 @@ smooth_outs_pr <- smooth_outs %>%
                 med_count = mean(COUNT),
                 iqr_count = sd(COUNT)) %>%
   dplyr::mutate(count_out = ifelse(COUNT > med_count+(7*iqr_count), "7iqr",
-                                 ifelse(COUNT > med_count+(6*iqr_count), "6iqr",
-                                        ifelse(COUNT > med_count+(5*iqr_count), "5iqr",
-                                               ifelse(COUNT > med_count+(4*iqr_count), "4iqr",
-                                                      ifelse(COUNT > med_count+(3*iqr_count), "3iqr",
-                                                             ifelse(COUNT > med_count+(2*iqr_count), "2iqr",
-                                                                    ifelse(COUNT > med_count+(1*iqr_count), "1iqr", "not_outlier")))))))) %>%
+                                   ifelse(COUNT > med_count+(6*iqr_count), "6iqr",
+                                          ifelse(COUNT > med_count+(5*iqr_count), "5iqr",
+                                                 ifelse(COUNT > med_count+(4*iqr_count), "4iqr",
+                                                        ifelse(COUNT > med_count+(3*iqr_count), "3iqr",
+                                                               ifelse(COUNT > med_count+(2*iqr_count), "2iqr",
+                                                                      ifelse(COUNT > med_count+(1*iqr_count), "1iqr", "not_outlier")))))))) %>%
   dplyr::select(-index, -med_count, -iqr_count) %>%
   dplyr::mutate(med_cov = median(COVERAGE),
                 iqr_cov = IQR(COVERAGE)) %>%
@@ -45,31 +49,16 @@ smooth_outs_pr <- smooth_outs %>%
 
 ggplot()+
   facet_grid(.~CHROM, space = "free", scales = "free")+
-  # geom_point( aes(color = rank, y = zero_counts,x = MID_BIN/1e6), data = smooth_outs) +
-  geom_line(aes(y=smoothed_outs,x = MID_BIN/1e6), color = "black", data = smooth_outs_pr) +
-  geom_segment(aes(x=start_region/1e6, xend = end_region/1e6, y = med_count+(3*iqr_count), yend = med_count+(3*iqr_count), color = GENOMIC_REGION), size =2,
-               data = smooth_outs_pr %>% dplyr::distinct(GENOMIC_REGION, end_region, start_region, .keep_all=T)) +
-  # geom_rect(aes(xmin=START_DIV/1e6, xmax=END_DIV/1e6, ymin=-5, ymax=0), data = div_chrom, fill = "cyan") +
-  theme_bw(18) +
-  theme(panel.grid.minor = element_blank()) +
-  labs(x = "Genomic Position (Mb)", y = "Variant Count")+
-  theme(strip.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.background = element_rect(fill = "gray70")) +
-  labs(color = "Outlier\nRank") 
-
-ggplot()+
-  facet_grid(.~CHROM, space = "free", scales = "free")+
   scale_color_viridis_c(direction = -1, option = "B")+
-  geom_point( aes(color = rank, y = COUNT,x = MID_BIN/1e6), data = smooth_outs) +
-  geom_line(aes(y=smoothed_outs,x = MID_BIN/1e6), color = "red", data = smooth_outs) +
+  # geom_point( aes(color = rank, y = COUNT,x = MID_BIN/1e6), data = smooth_outs) +
+  # geom_line(aes(y=smoothed_outs,x = MID_BIN/1e6), color = "red", data = smooth_outs) +
+  geom_line(aes(y=fraction_SV_bases,x = MID_BIN/1e6), color = "cyan", data = smooth_outs) +
   # geom_rect(aes(xmin=START_DIV/1e6, xmax=END_DIV/1e6, ymin=-5, ymax=0), data = div_chrom, fill = "cyan") +
   theme_bw(18) +
   theme(panel.grid.minor = element_blank()) +
   labs(x = "Genomic Position (Mb)", y = "Variant Count")+
   theme(strip.background = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.background = element_rect(fill = "gray70")) +
+        panel.grid.major = element_blank()) +
   labs(color = "Outlier\nRank") 
 
 smooth_outs %>%
@@ -136,3 +125,19 @@ smooth_outs %>%
   dplyr::mutate( masked = ifelse(smoothed_outs > 0 & COUNT > 150, "MASKED", "PASS")) %>%
   dplyr::group_by(masked) %>%
   dplyr::summarise(masked_region = sum(COUNT))
+
+
+ggplot()+
+  facet_grid(.~CHROM, space = "free", scales = "free")+
+  # geom_point( aes(color = rank, y = zero_counts,x = MID_BIN/1e6), data = smooth_outs) +
+  geom_line(aes(y=smoothed_outs,x = MID_BIN/1e6), color = "black", data = smooth_outs_pr) +
+  geom_segment(aes(x=start_region/1e6, xend = end_region/1e6, y = med_count+(3*iqr_count), yend = med_count+(3*iqr_count), color = GENOMIC_REGION), size =2,
+               data = smooth_outs_pr %>% dplyr::distinct(GENOMIC_REGION, end_region, start_region, .keep_all=T)) +
+  # geom_rect(aes(xmin=START_DIV/1e6, xmax=END_DIV/1e6, ymin=-5, ymax=0), data = div_chrom, fill = "cyan") +
+  theme_bw(18) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(x = "Genomic Position (Mb)", y = "Variant Count")+
+  theme(strip.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.background = element_rect(fill = "gray70")) +
+  labs(color = "Outlier\nRank") 
