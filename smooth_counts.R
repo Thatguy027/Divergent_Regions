@@ -6,8 +6,14 @@ try(setwd(dirname(rstudioapi::getActiveDocumentContext()$path)))
 outliers <- readr::read_tsv("CB4856_Outlier_Counts.tsv")
 coverage <- readr::read_tsv("CB4856.regions.bed.gz", col_names = c("CHROM", "START_BIN", "END_BIN", "COVERAGE"))
 
+# sv file
+# grep -v BND CB4856_SnpEff.bed | cut -f -3 | bedtools coverage -counts -a 1000windows.bed -b stdin > CB4856_nSVs.bed
+
+svs <- readr::read_tsv("CB4856_nSVs.bed", col_names = c("CHROM", "START_BIN", "END_BIN", "SV_CT"))
+
 smooth_outs <- outliers %>%
   dplyr::left_join(., coverage,  by = c("CHROM", "START_BIN", "END_BIN")) %>%
+  dplyr::left_join(., svs,  by = c("CHROM", "START_BIN", "END_BIN")) %>%
   dplyr::filter(CHROM=="II")%>%
   dplyr::mutate(direction = ifelse(is.na(direction), "ignore_na", 
                                    ifelse(direction == "Down", "ignore_down", "Up"))) %>%
