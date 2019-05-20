@@ -12,13 +12,19 @@ coverage <- readr::read_tsv("CB4856.regions.bed.gz", col_names = c("CHROM", "STA
 # sv file
 # grep -v BND CB4856_HQ_SnpEff.bed | cut -f -3 | bedtools coverage -a 1000windows.bed -b stdin > CB4856_nSVs.bed
 
-total_svs <- readr::read_tsv("CB4856_nSVs.bed", col_names = c("CHROM", "START_BIN", "END_BIN", "total_SV_CT","total_SV_bases","bin_size","fraction_SV_bases")) %>%
+# 
+# grep -v BND CB4856_HQ_SnpEff.bed | cut -f -3 | awk '$3-$2 < 1e5 {print}' | bedtools coverage -a 1000windows.bed -b stdin > CB4856_nSVs.bed
+# 
+# 
+# grep -v BND CB4856_SnpEff.bed | cut -f -3 | awk '$3-$2 < 1e5 {print}' | bedtools coverage -a 1000windows.bed -b stdin > CB4856_nSVs_low.bed
+
+total_svs <- readr::read_tsv("CB4856_nSVs_low.bed", col_names = c("CHROM", "START_BIN", "END_BIN", "total_SV_CT","total_SV_bases","bin_size","fraction_SV_bases")) %>%
   dplyr::select(-bin_size)
 
 smooth_outs <- outliers %>%
   dplyr::left_join(., coverage,  by = c("CHROM", "START_BIN", "END_BIN")) %>%
   dplyr::left_join(., total_svs,  by = c("CHROM", "START_BIN", "END_BIN")) %>%
-  dplyr::filter(CHROM=="IV")%>%
+  dplyr::filter(CHROM=="V")%>%
   dplyr::mutate(direction = ifelse(is.na(direction), "ignore_na", 
                                    ifelse(direction == "Down", "ignore_down", "Up"))) %>%
   dplyr::mutate(zero_counts = ifelse(outlier == "Yes", COUNT, 0)) %>%
@@ -41,25 +47,51 @@ smooth_outs_pr <- smooth_outs %>%
                                                                ifelse(COUNT > med_count+(2*iqr_count), "2iqr",
                                                                       ifelse(COUNT > med_count+(1*iqr_count), "1iqr", "not_outlier")))))))) %>%
   dplyr::select(-index, -med_count, -iqr_count) %>%
+  dplyr::ungroup() %>%
   dplyr::mutate(med_cov = median(COVERAGE),
                 iqr_cov = IQR(COVERAGE)) %>%
   dplyr::mutate(iqr_cov_out = ifelse(COVERAGE < med_cov-(iqr_cov), "low", 
                                      ifelse(COVERAGE > med_cov+(iqr_cov), "high", "not_outlier"))) %>%
-  dplyr::mutate(region = paste0(CHROM, ":", START_BIN, "-", END_BIN))
+  dplyr::mutate(zero_cov = ifelse(iqr_cov_out == "low" , 100, 1)) %>%
+  dplyr::mutate(region = paste0(CHROM, ":", START_BIN, "-", END_BIN)) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(smoothed_cov = smth.gaussian(zero_cov, 
+                                              alpha = 5,
+                                              window = 10,
+                                              tails = T)) %>%
+  dplyr::mutate(norm_smooth_out = smoothed_outs/max(smoothed_outs),
+                norm_coverage = log(smoothed_cov)/max(log(smoothed_cov)),
+                norm_svct = total_SV_CT/max(total_SV_CT))
 
 ggplot()+
   facet_grid(.~CHROM, space = "free", scales = "free")+
-  scale_color_viridis_c(direction = -1, option = "B")+
-  # geom_point( aes(color = rank, y = COUNT,x = MID_BIN/1e6), data = smooth_outs) +
-  # geom_line(aes(y=smoothed_outs,x = MID_BIN/1e6), color = "red", data = smooth_outs) +
-  geom_line(aes(y=fraction_SV_bases,x = MID_BIN/1e6), color = "cyan", data = smooth_outs) +
-  # geom_rect(aes(xmin=START_DIV/1e6, xmax=END_DIV/1e6, ymin=-5, ymax=0), data = div_chrom, fill = "cyan") +
+  # geom_line(aes(y=COVERAGE,x = MID_BIN/1e6), color = "purple", data = smooth_outs_pr) +
+  geom_line(aes(y=norm_smooth_out,x = MID_BIN/1e6), color = "red", data = smooth_outs_pr) +
+  geom_line(aes(y=-norm_coverage,x = MID_BIN/1e6), color = "cyan", data = smooth_outs_pr) +
   theme_bw(18) +
   theme(panel.grid.minor = element_blank()) +
   labs(x = "Genomic Position (Mb)", y = "Variant Count")+
   theme(strip.background = element_blank(),
         panel.grid.major = element_blank()) +
-  labs(color = "Outlier\nRank") 
+  labs(color = "Outlier\nRank") + xlim(c(15,20))
+
+
+make_windows <- smooth_outs_pr %>%
+  dplyr::select(CHROM:MID_BIN, COVERAGE, norm_smooth_out, norm_coverage, norm_svct) %>%
+  dplyr::mutate(norm_coverage = ifelse(norm_coverage < 0, 0, norm_coverage))
+
+ggplot()+
+  facet_grid(.~CHROM, space = "free", scales = "free")+
+  geom_line(aes(y=smoothed_outs,x = MID_BIN/1e6), color = "red", data = smooth_outs_pr) +
+  # geom_line(aes(y=COVERAGE,x = MID_BIN/1e6), color = "cyan", data = smooth_outs_pr) +
+  geom_line(aes(y=total_SV_CT,x = MID_BIN/1e6), color = "purple", data = smooth_outs_pr) +
+  theme_bw(18) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(x = "Genomic Position (Mb)", y = "Variant Count")+
+  theme(strip.background = element_blank(),
+        panel.grid.major = element_blank()) +
+  labs(color = "Outlier\nRank") + xlim(2,3)
+
 
 smooth_outs %>%
   dplyr::mutate( masked = ifelse(smoothed_outs > 0 & COUNT > 150, "MASKED", "PASS")) %>%
