@@ -65,7 +65,6 @@ smooth_outs_pr <- smooth_outs %>%
 
 ggplot()+
   facet_grid(.~CHROM, space = "free", scales = "free")+
-  # geom_line(aes(y=COVERAGE,x = MID_BIN/1e6), color = "purple", data = smooth_outs_pr) +
   geom_line(aes(y=norm_smooth_out,x = MID_BIN/1e6), color = "red", data = smooth_outs_pr) +
   geom_line(aes(y=-norm_coverage,x = MID_BIN/1e6), color = "cyan", data = smooth_outs_pr) +
   theme_bw(18) +
@@ -77,7 +76,7 @@ ggplot()+
 
 
 make_windows <- smooth_outs_pr %>%
-  dplyr::select(CHROM:MID_BIN, COVERAGE, norm_smooth_out, norm_coverage, norm_svct) %>%
+  dplyr::select(CHROM:MID_BIN, region, COVERAGE, norm_smooth_out, norm_coverage, norm_svct, fraction_SV_bases) %>%
   dplyr::mutate(norm_coverage = ifelse(norm_coverage < 0, 0, norm_coverage))
 
 ggplot()+
