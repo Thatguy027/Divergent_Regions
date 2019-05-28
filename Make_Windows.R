@@ -53,8 +53,8 @@ m_windows <- outliers %>%
   dplyr::mutate(window_mask = ifelse(count_direction == "Up", "Masked_Outlier", window_mask)) %>% # outlier mask
   dplyr::mutate(window_mask = ifelse(COUNT > as.numeric(args[4]) & !grepl("Masked", window_mask), "Masked_Count", window_mask)) %>% # variant count mask
   dplyr::mutate(window_mask = ifelse(count_outlier == "Yes" & fraction_SV_bases > as.numeric(args[5]), "Masked_SV", window_mask)) %>% # High SV fraction and variant count outlier mask
-  dplyr::mutate(window_mask = ifelse( total_SV_CT > as.numeric(args[7]) & COUNT > as.numeric(args[8]), "Masked_SV_count", window_mask)) %>% # SVs and moderate variant count
-  dplyr::mutate(window_mask = ifelse( total_SV_CT > as.numeric(args[9]) & COVERAGE < as.numeric(args[10]), "Masked_SV_count_cov", window_mask)) %>% # High SV count and low coverage
+  dplyr::mutate(window_mask = ifelse(COUNT > as.numeric(args[6])*(1-fraction_SV_bases) & !grepl("Masked", window_mask), "Masked_SV_count", window_mask)) %>% # SVs and moderate variant count
+  dplyr::mutate(window_mask = ifelse( total_SV_CT > as.numeric(args[9]) & COVERAGE < as.numeric(args[10])& !grepl("Masked", window_mask), "Masked_SV_count_cov", window_mask)) %>% # High SV count and low coverage
   # If regions flanking are both masked, then mask central region
   dplyr::mutate(window_mask = ifelse((grepl("Masked", dplyr::lag(window_mask)) & grepl("Masked", dplyr::lead(window_mask))) & !grepl("Masked", window_mask), "Masked_Two_Flank", window_mask)) %>%  
   # If one region flanking is masked and variant count is defined as an outlier, then mask the region
